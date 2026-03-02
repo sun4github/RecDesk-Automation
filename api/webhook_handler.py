@@ -20,7 +20,6 @@ async def handle_sendgrid_webhook(
                               data.text_body, 
                               data.message_id, 
                               data.raw_email)
-    
     return {"status": "accepted"}
 
 @router.get("/status")

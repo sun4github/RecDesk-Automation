@@ -1,8 +1,12 @@
 import psycopg
 from psycopg_pool import AsyncConnectionPool
+from dotenv import load_dotenv
+import os
+
+load_dotenv(override=True)
 
 # Connection string
-conn_str = "dbname=recdesk_app user=user_ai password=SMACK!small3bright host=localhost"
+conn_str = f"dbname=recdesk_app user={os.getenv('DB_USER')} password={os.getenv('DB_PASSWORD')} host=localhost"
 
 # Global pool
 pool = AsyncConnectionPool(conn_str, open=False)
