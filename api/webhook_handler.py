@@ -1,7 +1,8 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi import HTTPException, status
-from services.ai_service import process_email
+from services.ai_service import process_email, start_new_campaign
 from schemas.postmark import PostmarkInbound
+from schemas.campaign import Campaign
 from api.deps import verify_credentials
 
 router = APIRouter()
@@ -29,3 +30,12 @@ async def get_status():
         "hardware": "Raspberry Pi 5",
         "message": "FastAPI is running behind Caddy!"
     }
+
+@router.post("/campaign")
+async def new_campaign(
+    campaign: Campaign,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(verify_credentials)
+):
+    background_tasks.add_task(start_new_campaign, campaign.theme, campaign.id)
+    return {"status": "campaign started"}
