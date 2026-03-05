@@ -1,4 +1,5 @@
-from agents import Agent, Runner, trace, function_tool
+from agents import Agent, Runner, trace, function_tool, OpenAIChatCompletionsModel
+from openai import AsyncOpenAI
 import os
 import asyncio
 import json
@@ -10,7 +11,10 @@ from services.ai_agents import (
     get_relevant_program_data,
     get_users_with_interests,
     send_email_via_postmark,
+    insert_campaign_audit,
 )
+
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")    
 
 
 async def process_email(from_email: str, subject: str, text_body: str, message_id: str, raw_email: str) -> str:
@@ -26,10 +30,14 @@ async def process_email(from_email: str, subject: str, text_body: str, message_i
     write compelling email content, and send an email to the parent who responded. Your tone should be sporty but exciting
     """
 
+    ollama_client = AsyncOpenAI(base_url="http://localhost:11434/v1/", api_key=OLLAMA_API_KEY)
+
+    ollama_model=OpenAIChatCompletionsModel(model="gpt-oss:20b-cloud", openai_client=ollama_client)
+
     coordinator_agent = Agent(
         name="Rec Desk Program Coordinator Agent",
         instructions=instructions1,
-        model="gpt-5-mini-2025-08-07",
+        model=ollama_model,
         tools=[get_relevant_program_data, send_email_via_postmark])
 
     response = await Runner.run(coordinator_agent, json.dumps({
@@ -70,11 +78,17 @@ async def start_new_campaign(theme: str, id: str) -> dict:
     2. Evaluate drafts: review both email drafts and assess their effectiveness in engaging the target audience. \
     3. Select the best draft: choose the email draft that you believe will have the highest impact for the campaign. \
     4. Personalize and send: use the get_users_with_interests tool to fetch a list of users interested in the campaign theme. \
+    5. Handoff for auditing: after sending the email, hand off to the auditor_agent to log the campaign details into the database. \
 
     Critical Rules: \
     - Do not generate email content yourself; rely solely on the two marketing agents for drafts. \
     - Ensure the selected email draft aligns with the campaign theme and resonates with the target audience. \
     - Use the send_email_via_postmark tool to send the finalized email to all users interested in the campaign theme. \
+    """
+
+    auditor_agent_instructions = """You are the Campaign Auditer Agent. Your job is to log the campaign details into the database for auditing purposes. \
+    Use the insert_campaign_audit tool to log the campaign theme, the list of email addresses the email was sent to, and the the email body that was sent. \
+    Ensure that all details are accurately recorded for future reference.
     """
 
     marketing_agent_serious = Agent(
@@ -93,11 +107,20 @@ async def start_new_campaign(theme: str, id: str) -> dict:
 
     funny_agent_tool = marketing_agent_funny.as_tool(tool_name="funny_marketing_agent", tool_description="Generates funny marketing email content based on program data.")
 
+    auditor_agent = Agent(
+        name="Campaign Auditer Agent",
+        instructions=auditor_agent_instructions,
+        model="gpt-5-mini-2025-08-07",
+        tools=[insert_campaign_audit],
+        handoff_description="Logs campaign details into the database for auditing purposes."
+    )
+
     manager_agent = Agent(
         name = "Campaign Manager Agent",
         instructions=manager_instructions,
         model="gpt-5-mini-2025-08-07",
-        tools=[serious_agent_tool, funny_agent_tool, get_users_with_interests, send_email_via_postmark]
+        tools=[serious_agent_tool, funny_agent_tool, get_users_with_interests, send_email_via_postmark],
+        handoffs=[auditor_agent]
     )
 
 
