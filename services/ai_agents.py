@@ -98,6 +98,43 @@ def _to_pgvector_literal(values: list[float]) -> str:
     return "[" + ",".join(str(value) for value in values) + "]"
 
 @function_tool
+async def insert_campaign_audit(
+    theme: str,
+    email_address_list: list[str],
+    email_sent: str,
+) -> dict:
+    """Insert an audit row into campaign_audit after campaign emails are sent."""
+    if not theme or not theme.strip():
+        raise ValueError("theme is required")
+    if not email_address_list:
+        raise ValueError("email_address_list is required")
+    if not email_sent or not email_sent.strip():
+        raise ValueError("email_sent is required")
+
+    if getattr(pool, "closed", False):
+        await pool.open()
+
+    query = """
+        INSERT INTO campaign_audit (theme, email_address_list, email_sent)
+        VALUES (%s, %s, %s)
+        RETURNING id, created_at
+    """
+
+    email_addresses_text = json.dumps(email_address_list)
+
+    async with pool.connection() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(query, (theme.strip(), email_addresses_text, email_sent.strip()))
+            inserted_row = await cur.fetchone()
+        await conn.commit()
+
+    return {
+        "status": "inserted",
+        "id": inserted_row.get("id") if inserted_row else None,
+        "created_at": inserted_row.get("created_at").isoformat() if inserted_row and inserted_row.get("created_at") else None,
+    }
+
+@function_tool
 async def get_relevant_program_data(user_query: str, year: int, limit: int = 8) -> dict:
     query_embedding_response = ollama.embed(
         model="nomic-embed-text:v1.5",
