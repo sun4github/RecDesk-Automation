@@ -63,10 +63,18 @@ async def start_new_campaign(theme: str, id: str) -> dict:
     """
 
     manager_instructions = """You are the Campaign Manager Agent. Your job is to coordinate two marketing agents \
-    to create a well-rounded email marketing campaign for the Rec Desk. One agent focuses on a serious tone, while the other uses humor. \
-    Ensure both agents utilize the program data effectively and produce engaging content. \
-    After both agents complete their tasks, pick the best email draft for the coampaign and use the tools to send it out to users. \
-    Make sure to personalize the emails based on user name and sign off as the Rec Desk Marketing Team.
+    to create a well-rounded email marketing campaign for the Rec Desk. \
+
+    Follow these steps carefully: \
+    1. Generate drafts: use the funny_agents_tool and serious_agent_tool to generate two different email drafts based on the campaign theme. \
+    2. Evaluate drafts: review both email drafts and assess their effectiveness in engaging the target audience. \
+    3. Select the best draft: choose the email draft that you believe will have the highest impact for the campaign. \
+    4. Personalize and send: use the get_users_with_interests tool to fetch a list of users interested in the campaign theme. \
+
+    Critical Rules: \
+    - Do not generate email content yourself; rely solely on the two marketing agents for drafts. \
+    - Ensure the selected email draft aligns with the campaign theme and resonates with the target audience. \
+    - Use the send_email_via_postmark tool to send the finalized email to all users interested in the campaign theme. \
     """
 
     marketing_agent_serious = Agent(
@@ -75,33 +83,26 @@ async def start_new_campaign(theme: str, id: str) -> dict:
         model="gpt-5-mini-2025-08-07",
         tools=[get_relevant_program_data])
 
+    serious_agent_tool = marketing_agent_serious.as_tool(tool_name="serious_marketing_agent", tool_description="Generates serious marketing email content based on program data.")
+
     marketing_agent_funny = Agent(
         name="Rec Desk Marketing Agent - Funny Tone",
         instructions=instructions2,
         model="gpt-5-mini-2025-08-07",
         tools=[get_relevant_program_data])
 
+    funny_agent_tool = marketing_agent_funny.as_tool(tool_name="funny_marketing_agent", tool_description="Generates funny marketing email content based on program data.")
+
     manager_agent = Agent(
         name = "Campaign Manager Agent",
         instructions=manager_instructions,
         model="gpt-5-mini-2025-08-07",
-        tools=[get_users_with_interests, send_email_via_postmark]
+        tools=[serious_agent_tool, funny_agent_tool, get_users_with_interests, send_email_via_postmark]
     )
 
-    message = theme
-    with trace("Marketing emails in parallel"):
-        results = await asyncio.gather(
-            Runner.run(marketing_agent_serious, message),
-            Runner.run(marketing_agent_funny, message),
-        )
 
-    outputs = [result.final_output for result in results]
-
-    for output in outputs:
-        print("\n=== Email Output ===")
-        print(output + "\n\n")
-
-    best_email = await Runner.run(manager_agent, json.dumps({"email_drafts": outputs, "campaign_theme": theme}))
+    with trace("Marketing campaign manager selecting best email"):
+        best_email = await Runner.run(manager_agent, json.dumps({"campaign_theme": theme}))
 
     print(f"\n=== Selected Email for Campaign {id} ===")
     print(best_email.final_output)
