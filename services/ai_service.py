@@ -1,4 +1,5 @@
-from agents import Agent, Runner, trace, function_tool
+from agents import Agent, Runner, trace, function_tool, OpenAIChatCompletionsModel
+from openai import AsyncOpenAI
 import os
 import asyncio
 import json
@@ -12,6 +13,8 @@ from services.ai_agents import (
     send_email_via_postmark,
     insert_campaign_audit,
 )
+
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")    
 
 
 async def process_email(from_email: str, subject: str, text_body: str, message_id: str, raw_email: str) -> str:
@@ -27,10 +30,14 @@ async def process_email(from_email: str, subject: str, text_body: str, message_i
     write compelling email content, and send an email to the parent who responded. Your tone should be sporty but exciting
     """
 
+    ollama_client = AsyncOpenAI(base_url="http://localhost:11434/v1/", api_key=OLLAMA_API_KEY)
+
+    ollama_model=OpenAIChatCompletionsModel(model="gpt-oss:20b-cloud", openai_client=ollama_client)
+
     coordinator_agent = Agent(
         name="Rec Desk Program Coordinator Agent",
         instructions=instructions1,
-        model="gpt-5-mini-2025-08-07",
+        model=ollama_model,
         tools=[get_relevant_program_data, send_email_via_postmark])
 
     response = await Runner.run(coordinator_agent, json.dumps({
