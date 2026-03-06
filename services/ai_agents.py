@@ -8,6 +8,7 @@ from db import pool
 import psycopg
 import asyncio
 import json
+from schemas.programinfo import ProgramInfo
 
 load_dotenv(override=True)
 

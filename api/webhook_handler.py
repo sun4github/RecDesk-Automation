@@ -1,9 +1,11 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi import HTTPException, status
-from services.ai_service import process_email, start_new_campaign
+from services.ai_service import process_email, start_new_campaign, get_programs_for_interest
 from schemas.postmark import PostmarkInbound
 from schemas.campaign import Campaign
 from api.deps import verify_credentials
+from schemas.programinfo import InterestsData, ProgramInfo
+
 
 router = APIRouter()
 
@@ -39,3 +41,11 @@ async def new_campaign(
 ):
     background_tasks.add_task(start_new_campaign, campaign.theme, campaign.id)
     return {"status": "campaign started"}
+
+@router.post("/interests")
+async def find_programs_by_interests(
+    interestsData: InterestsData,
+    _: str = Depends(verify_credentials)
+):
+    result = await get_programs_for_interest(interestsData.interests)
+    return result

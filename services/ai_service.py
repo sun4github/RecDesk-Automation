@@ -1,8 +1,10 @@
 from agents import Agent, Runner, trace, function_tool, OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 import os
+from pydantic import BaseModel
 import asyncio
 import json
+import re
 import psycopg
 import ollama
 from psycopg.rows import dict_row
@@ -13,8 +15,34 @@ from services.ai_agents import (
     send_email_via_postmark,
     insert_campaign_audit,
 )
+from schemas.programinfo import ProgramInfo, Programs
 
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")    
+
+
+async def get_programs_for_interest(interests: list[str]) -> list[ProgramInfo]:
+    instructions1 = """You are a rec desk program agent working for Lanc Rec Desk \
+    that helps parents and citizens find the right programs that fit their needs. You will take a list of strings representing interests \
+    Always assume they are looking for programs in the current year and season. \
+    Your job is to find the right programs for them. Use the get_relevant_program_data tool to \
+    gather program data. Return ONLY valid JSON using this shape: {\"programs\":[ProgramInfo,...]}. \
+    Do not include explanation text before or after the JSON. \
+    """
+    
+    coordinator_agent = Agent(
+        name="Rec Desk Program Coordinator Agent",
+        instructions=instructions1,
+        model="gpt-5-mini-2025-08-07", # have to use OpenAI model here due to JSON parsing issues with Ollama
+        tools=[get_relevant_program_data, send_email_via_postmark],
+        output_type=Programs
+    )
+
+    response = await Runner.run(coordinator_agent, json.dumps({
+        "interests": interests
+    }))
+    
+    # Parse the JSON from text response
+    return response.final_output.programs
 
 
 async def process_email(from_email: str, subject: str, text_body: str, message_id: str, raw_email: str) -> str:
