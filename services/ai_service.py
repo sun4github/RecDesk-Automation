@@ -1,4 +1,4 @@
-from agents import Agent, Runner, trace, function_tool, OpenAIChatCompletionsModel
+from agents import Agent, Runner, trace, function_tool, OpenAIChatCompletionsModel, input_guardrail, output_guardrail, GuardrailFunctionOutput
 from openai import AsyncOpenAI
 import os
 from pydantic import BaseModel
@@ -16,8 +16,32 @@ from services.ai_agents import (
     insert_campaign_audit,
 )
 from schemas.programinfo import ProgramInfo, Programs
+from schemas.politicalEmail import PoliticalEmail
 
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")    
+
+politics_detection_agent = Agent(
+    name ="Political Email Detection Agent",
+    instructions="""You are an email content analysis agent. Your job is to analyze the content of emails \
+    and determine if they contain political statements. Political statements include any references to political parties, \
+    politicians, government policies, elections, or political ideologies. \
+    """,
+    model="gpt-5-mini-2025-08-07",
+    output_type=PoliticalEmail
+)
+
+
+@input_guardrail
+async def political_email_check(ctx, agent, message):
+    result = await Runner.run(politics_detection_agent, message, context=ctx.context)
+    is_political = result.final_output.is_political
+    return GuardrailFunctionOutput(output_info={"political_statements": result.final_output.political_statements}, tripwire_triggered=is_political)
+
+@output_guardrail
+async def program_info_output_guardrail(ctx, agent, message):
+    result = await Runner.run(politics_detection_agent, message, context=ctx.context)
+    is_political = result.final_output.is_political
+    return GuardrailFunctionOutput(output_info={"political_statements": result.final_output.political_statements}, tripwire_triggered=is_political)
 
 
 async def get_programs_for_interest(interests: list[str]) -> list[ProgramInfo]:
@@ -66,7 +90,10 @@ async def process_email(from_email: str, subject: str, text_body: str, message_i
         name="Rec Desk Program Coordinator Agent",
         instructions=instructions1,
         model=ollama_model,
-        tools=[get_relevant_program_data, send_email_via_postmark])
+        tools=[get_relevant_program_data, send_email_via_postmark],
+        input_guardrails=[political_email_check],
+        output_guardrails=[program_info_output_guardrail]
+        )
 
     response = await Runner.run(coordinator_agent, json.dumps({
         "from_email": from_email,
